@@ -1,8 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿using System.Net.Http;
 
 namespace Innofactor.SuomiFiAuthorizationClient {
+
     public static class HttpResponseMessageHelpers {
 
         /// <summary>
