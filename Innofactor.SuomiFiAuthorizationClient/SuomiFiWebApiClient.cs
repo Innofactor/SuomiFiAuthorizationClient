@@ -1,4 +1,6 @@
 ﻿using Innofactor.SuomiFiAuthorizationClient.Config;
+using Innofactor.SuomiFiAuthorizationClient.Support;
+using Microsoft.Extensions.Logging;
 using System;
 using System.Linq;
 using System.Net.Http;
@@ -9,6 +11,11 @@ using System.Threading.Tasks;
 namespace Innofactor.SuomiFiAuthorizationClient {
 
     public class SuomiFiWebApiClient {
+
+        private enum Mode {
+            Hpa,
+            Ypa
+        }
 
         [DataContract]
         public class OAuthResponse {
@@ -40,14 +47,19 @@ namespace Innofactor.SuomiFiAuthorizationClient {
             public string[] Roles { get; set; }
         }
 
+        private readonly IEncryptedCookieAccessor authStateAccessor;
         private readonly HttpClient httpClient;
         private readonly SuomiFiAuthorizationConfig authConfig;
+        private readonly ILogger<SuomiFiWebApiClient> logger;
         private const string requestId = "suomiFiApiClient";
         private const string userId = "suomiFiUser";
 
-        public SuomiFiWebApiClient(HttpClient httpClient, SuomiFiAuthorizationConfig authConfig) {
+        public SuomiFiWebApiClient(HttpClient httpClient, SuomiFiAuthorizationConfig authConfig, IEncryptedCookieAccessor authStateAccessor,
+            ILoggerFactory loggerFactory) {
             this.httpClient = httpClient;
             this.authConfig = authConfig;
+            this.authStateAccessor = authStateAccessor;
+            this.logger = loggerFactory.CreateLogger<SuomiFiWebApiClient>();
         }
 
         private async Task<T> GetObject<T>(HttpRequestMessage request) where T : class {
@@ -151,6 +163,31 @@ namespace Innofactor.SuomiFiAuthorizationClient {
             }).ToArray();
         }
 
+        private async Task UnregisterSession(Mode mode) {
+
+            logger.LogDebug("Unregister session");
+
+            var sessionId = authStateAccessor.Value;
+
+            if (string.IsNullOrEmpty(sessionId))
+                return;
+
+            var registerPath = $"/service/{mode.ToString().ToLowerInvariant()}/user/unregister/{sessionId}";
+            var auth = AuthorizationHeaderFactory.Create(authConfig.ClientId, authConfig.WebApiKey, registerPath, DateTime.UtcNow);
+
+            var absUrl = authConfig.RovaHost + registerPath;
+            var request = new HttpRequestMessage(HttpMethod.Get, absUrl) {
+                Headers = {
+                  { "X-AsiointivaltuudetAuthorization", auth }
+                }
+            };
+
+            var response = await httpClient.SendAsync(request);
+            response.EnsureSuccess();
+
+            logger.LogInformation("Session unregistered");
+
+        }
 
     }
 
